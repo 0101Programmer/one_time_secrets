@@ -3,8 +3,7 @@ from sqlalchemy.orm import Session
 from ...database import schemas, models
 
 
-def create_secret(db: Session, secret_data: schemas.SecretCreate, ip_address: str):
-    # Создаем объект Secret (остальные поля заполнятся автоматически)
+def create_secret(db: Session, secret_data: schemas.SecretCreate, ip_address: str) -> schemas.SecretResponse:
     db_secret = models.Secret(
         secret=secret_data.secret,
         passphrase=secret_data.passphrase,
@@ -15,7 +14,7 @@ def create_secret(db: Session, secret_data: schemas.SecretCreate, ip_address: st
     db.commit()
     db.refresh(db_secret)
 
-    # Логируем создание
+    # Логирование
     log = models.SecretLog(
         secret_id=db_secret.id,
         secret_key=db_secret.secret_key,
@@ -25,4 +24,4 @@ def create_secret(db: Session, secret_data: schemas.SecretCreate, ip_address: st
     db.add(log)
     db.commit()
 
-    return db_secret
+    return schemas.SecretResponse(secret_key=db_secret.secret_key)

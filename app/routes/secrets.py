@@ -13,5 +13,4 @@ async def create_new_secret(
     request: Request,
     db: Session = Depends(get_db)
 ):
-    """Создает новый секрет. Требуются только secret и passphrase"""
     return create_secret(db, secret_data, request.client.host)

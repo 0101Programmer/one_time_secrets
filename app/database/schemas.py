@@ -13,14 +13,8 @@ class SecretCreate(SecretBase):
     pass
 
 
-class SecretResponse(SecretBase):
-    id: int
+class SecretResponse(BaseModel):
     secret_key: str
-    created_at: datetime
-    is_accessed: bool
-
-    class Config:
-        from_attributes = True
 
 
 class SecretLogResponse(BaseModel):
