@@ -8,6 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .logger_config import setup_logger
+from ..cache.redis_config import get_redis_client
 from ..database import models
 from ..database.config import SessionLocal
 
@@ -50,6 +51,9 @@ def clean_expired_secrets(batch_size: int = 100) -> Dict[str, str | int]:
 
         logger.info(f"Found {len(expired_secrets)} expired secrets")
 
+        # Создаём клиент Redis
+        redis_client = get_redis_client()
+
         for secret in expired_secrets:
             try:
                 expires_at = secret.created_at + timedelta(seconds=secret.ttl_seconds)
@@ -59,6 +63,13 @@ def clean_expired_secrets(batch_size: int = 100) -> Dict[str, str | int]:
                     f"ttl={secret.ttl_seconds}s, "
                     f"expired_at={expires_at}"
                 )
+
+                # Удаляем секрет из Redis
+                try:
+                    redis_client.delete(secret.secret_key)
+                    logger.info(f"Deleted secret from Redis: key={secret.secret_key}")
+                except Exception as e:
+                    logger.error(f"Redis error during cleanup: {e}")
 
                 # Помечаем секрет как удалённый
                 secret.is_deleted = True
