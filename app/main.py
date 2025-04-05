@@ -14,5 +14,5 @@ async def add_no_cache_headers(request: Request, call_next):
     return response
 
 # Подключаем роуты
-app.include_router(secrets.router, prefix="/secrets", tags=["secrets"])
+app.include_router(secrets.router, prefix="/secret", tags=["secrets"])
 

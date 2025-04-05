@@ -12,7 +12,7 @@ from ..database.schemas import SecretReadResponse, SecretDeleteResponse
 
 router = APIRouter()
 
-@router.post("/secret", response_model=schemas.SecretResponse)
+@router.post("/", response_model=schemas.SecretResponse)
 async def create_new_secret(
     secret_data: schemas.SecretCreate,
     request: Request,
@@ -21,7 +21,7 @@ async def create_new_secret(
     return create_secret(db, secret_data, request.client.host)
 
 
-@router.get("/secret/{secret_key}", response_model=schemas.SecretReadResponse)
+@router.get("/{secret_key}", response_model=schemas.SecretReadResponse)
 async def api_get_secret(
     secret_key: str,
     passphrase: str,
@@ -46,7 +46,7 @@ async def api_get_secret(
 
 
 @router.delete(
-    "/secret/{secret_key}",
+    "/{secret_key}",
     response_model=schemas.SecretDeleteResponse,
     status_code=http_status.HTTP_200_OK
 )
