@@ -12,7 +12,7 @@ from ..database.schemas import SecretReadResponse, SecretDeleteResponse
 
 router = APIRouter()
 
-@router.post("/", response_model=schemas.SecretResponse)
+@router.post("/secret", response_model=schemas.SecretResponse)
 async def create_new_secret(
     secret_data: schemas.SecretCreate,
     request: Request,

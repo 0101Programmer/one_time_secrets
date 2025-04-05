@@ -19,14 +19,15 @@ def delete_secret(
     ).first()
 
     if not secret:
-        return (False, None)
+        return False, None
 
     if secret.is_deleted:
-        return (False, secret.id)
+        return False, secret.id
 
+    # Мягкое удаление (без очистки зашифрованных данных)
     secret.is_deleted = True
-    secret.deleted_at = datetime.now(timezone.utc)
 
+    # Логирование
     log = models.SecretLog(
         secret_id=secret.id,
         secret_key=secret_key,
@@ -36,4 +37,4 @@ def delete_secret(
     db.add(log)
     db.commit()
 
-    return (True, secret.id)
+    return True, secret.id
