@@ -2,10 +2,11 @@ import datetime
 
 from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
-from fastapi import status
+from fastapi import status as http_status
 
 from ..crud.secrets import create_secret
-from ..database import schemas
+from ..crud.secrets import delete_secret
+from ..database import schemas, models
 from ..database.config import get_db
 from ..database.models import Secret, SecretLog
 from ..database.schemas import SecretReadResponse, SecretDeleteResponse
@@ -100,46 +101,29 @@ async def get_secret(
 
 @router.delete(
     "/secret/{secret_key}",
-    response_model=SecretDeleteResponse,
-    status_code=status.HTTP_200_OK
+    response_model=schemas.SecretDeleteResponse,
+    status_code=http_status.HTTP_200_OK
 )
-async def delete_secret(
-        secret_key: str,
-        request: Request,
-        db: Session = Depends(get_db)
+async def api_delete_secret(
+    secret_key: str,
+    request: Request,
+    db: Session = Depends(get_db)
 ):
-    # Находим секрет (исключая уже удалённые)
-    secret = db.query(Secret).filter(
-        Secret.secret_key == secret_key,
-        Secret.is_deleted == False  # Проверяем, что секрет не был удалён ранее
-    ).first()
+    operation_success, secret_id = delete_secret(db, secret_key, request.client.host)
 
-    if not secret:
-        # Логируем попытку удаления несуществующего или уже удалённого секрета
-        log = SecretLog(
+    if not operation_success:
+        log = models.SecretLog(
+            secret_id=secret_id,
             secret_key=secret_key,
-            action="delete_attempt_not_found",
+            action="delete_attempt_failed",
             ip_address=request.client.host
         )
         db.add(log)
         db.commit()
+
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail="Secret not found or already deleted"
         )
-
-    # Логируем удаление
-    log = SecretLog(
-        secret_id=secret.id,
-        secret_key=secret_key,
-        action="delete_successful",
-        ip_address=request.client.host
-    )
-    db.add(log)
-
-    # Мягкое удаление
-    secret.is_deleted = True
-
-    db.commit()
 
     return {"status": "secret_deleted"}
