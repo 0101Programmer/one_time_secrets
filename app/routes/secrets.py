@@ -1,15 +1,12 @@
-import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request, HTTPException
-from sqlalchemy.orm import Session
 from fastapi import status as http_status
+from sqlalchemy.orm import Session
 
 from ..crud.secrets import create_secret, get_secret, delete_secret
 from ..database import schemas, models
 from ..database.config import get_db
-from ..database.models import Secret, SecretLog
-from ..database.schemas import SecretReadResponse, SecretDeleteResponse
 
 router = APIRouter()
 
@@ -26,7 +23,7 @@ async def create_new_secret(
 async def api_get_secret(
     secret_key: str,
     request: Request,
-    passphrase: Optional[str] = None,  # Сделаем passphrase опциональным
+    passphrase: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     try:

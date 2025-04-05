@@ -1,14 +1,12 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-import os
-from dotenv import load_dotenv
 
-from ..config import Config
+from ..config import app_config_instance  # Импортируем класс Config
 
-load_dotenv()
 
-POSTGRES_URL = Config.DATABASE_URL
+# Используем DATABASE_URL из экземпляра конфигурации
+POSTGRES_URL = app_config_instance.DATABASE_URL
 
 # Создаем движок с настройками для Alembic
 engine = create_engine(
