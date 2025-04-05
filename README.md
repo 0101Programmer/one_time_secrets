@@ -108,6 +108,34 @@ docker-compose up --build
 ### Обзор основного функционала:
 
 #### 1. **Создание секрета**
+
+![Снимок экрана 2025-04-05 165931](https://github.com/user-attachments/assets/d6638fb6-e5d3-4a7c-84da-9b73815d377b)
+
+
+![Снимок экрана 2025-04-05 165941](https://github.com/user-attachments/assets/d0881a6e-017c-4ef5-932f-cce8e431d273)
+
+
+
 #### 2. **Получение секрета**
+
+- **попытка запроса с неверной кодовой фразой**
+
+
+![Снимок экрана 2025-04-05 170001](https://github.com/user-attachments/assets/3131d654-8c7a-4da2-8f74-0c954cf0b3c2)
+
+- **запрос с валидными данными**
+
+![Снимок экрана 2025-04-05 170018](https://github.com/user-attachments/assets/5c299b5c-4f43-48af-9ee8-14c5a9d81427)
+
+- **повторный запрос**
+
+
+![Снимок экрана 2025-04-05 170028](https://github.com/user-attachments/assets/d6623808-cb2a-4144-bd59-17b65a0577d1)
+
+
+
 #### 3. **Удаление секрета**
+
+
+![Снимок экрана 2025-04-05 170047](https://github.com/user-attachments/assets/3d977ef2-679d-4de2-8d3c-c036b6f2595d)
 
