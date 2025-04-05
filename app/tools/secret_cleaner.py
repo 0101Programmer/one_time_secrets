@@ -64,10 +64,11 @@ def clean_expired_secrets(batch_size: int = 100) -> Dict[str, str | int]:
                     f"expired_at={expires_at}"
                 )
 
-                # Удаляем секрет из Redis
+                # Удаляем секрет и пароль из Redis
                 try:
-                    redis_client.delete(secret.secret_key)
-                    logger.info(f"Deleted secret from Redis: key={secret.secret_key}")
+                    redis_client.delete(f"secret:{secret.secret_key}")
+                    redis_client.delete(f"passphrase:{secret.secret_key}")
+                    logger.info(f"Deleted secret and passphrase from Redis: key={secret.secret_key}")
                 except Exception as e:
                     logger.error(f"Redis error during cleanup: {e}")
 

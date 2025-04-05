@@ -42,10 +42,15 @@ def delete_secret(
     if secret.is_deleted:
         return False, secret.id
 
-    # === Шаг 3: Удаление секрета из Redis ===
+    # === Шаг 3: Удаление секрета и пароля из Redis ===
     try:
         redis_client = get_redis_client()  # Получаем клиент Redis
-        redis_client.delete(secret_key)  # Удаляем секрет из Redis
+
+        # Удаляем секрет из Redis
+        redis_client.delete(f"secret:{secret_key}")
+
+        # Удаляем пароль из Redis, если он существует
+        redis_client.delete(f"passphrase:{secret_key}")
     except Exception as e:
         # Если Redis недоступен, логируем ошибку, но продолжаем работу
         logger.error(f"Redis error during secret deletion: {e}")

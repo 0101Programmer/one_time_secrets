@@ -41,17 +41,27 @@ def create_secret(
     db.commit()
     db.refresh(db_secret)  # Обновляем объект db_secret, чтобы получить все поля из БД
 
-    # === Шаг 4: Сохранение секрета в Redis ===
+    # === Шаг 4: Сохранение секрета и пароля в Redis ===
     try:
         redis_client = get_redis_client()  # Получаем клиент Redis
+
+        # Сохраняем зашифрованный секрет в Redis
         redis_client.set(
-            db_secret.secret_key,  # Ключ для Redis (уникальный ключ секрета)
+            f"secret:{db_secret.secret_key}",  # Ключ для Redis (уникальный ключ секрета)
             db_secret.encrypted_secret,  # Зашифрованный секрет
             ex=300  # TTL = 5 минут (300 секунд)
         )
+
+        # Если есть пароль, сохраняем зашифрованный пароль в Redis
+        if db_secret.encrypted_passphrase:
+            redis_client.set(
+                f"passphrase:{db_secret.secret_key}",  # Ключ для Redis (уникальный ключ пароля)
+                db_secret.encrypted_passphrase,  # Зашифрованный пароль
+                ex=300  # TTL = 5 минут (300 секунд)
+            )
     except Exception as e:
         # Если Redis недоступен, логируем ошибку, но продолжаем работу
-        logger.error(f"Redis error: {e}")
+        logger.error(f"Redis error during secret creation: {e}")
 
     # === Шаг 5: Логирование создания секрета ===
     # Создаём запись в логе о создании секрета.

@@ -37,13 +37,51 @@ def get_secret(
     """
     try:
         redis_client = get_redis_client()  # Получаем клиент Redis
-        encrypted_secret = redis_client.get(secret_key)  # Проверяем наличие секрета в Redis
+
+        # Проверяем наличие секрета в Redis
+        encrypted_secret = redis_client.get(f"secret:{secret_key}")
+        encrypted_passphrase = redis_client.get(f"passphrase:{secret_key}")
+
         if encrypted_secret:
-            redis_client.delete(secret_key)  # Удаляем секрет из Redis после чтения
-            return decrypt_data(encrypted_secret)  # Дешифруем секрет и возвращаем его
+            # Удаляем секрет и пароль из Redis после чтения
+            redis_client.delete(f"secret:{secret_key}")
+            if encrypted_passphrase:
+                redis_client.delete(f"passphrase:{secret_key}")
+
+            # Проверяем пароль, если он существует
+            if encrypted_passphrase:
+                decrypted_passphrase = decrypt_data(encrypted_passphrase)
+                if decrypted_passphrase != passphrase:
+                    _log_access_attempt(
+                        db,
+                        None,
+                        secret_key,
+                        "access_attempt_failed",
+                        ip_address
+                    )
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Invalid passphrase"
+                    )
+            elif passphrase is not None:
+                _log_access_attempt(
+                    db,
+                    None,
+                    secret_key,
+                    "access_attempt_failed",
+                    ip_address
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail="Passphrase was not set for this secret"
+                )
+
+            # Дешифруем и возвращаем секрет
+            return decrypt_data(encrypted_secret)
+
     except Exception as e:
-        # Если Redis недоступен, игнорируем ошибку и продолжаем работу
-        logger.error(f"Redis error: {e}")
+        # Если Redis недоступен, логируем ошибку и продолжаем работу
+        logger.error(f"Redis error during secret retrieval: {e}")
 
     # === Шаг 1: Поиск секрета в БД ===
     secret = db.query(models.Secret).filter(
