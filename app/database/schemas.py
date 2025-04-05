@@ -19,6 +19,9 @@ class SecretResponse(BaseModel):
 class SecretReadResponse(BaseModel):
     secret: str
 
+class SecretDeleteResponse(BaseModel):
+    status: str
+
 class SecretLogResponse(BaseModel):
     id: int
     secret_id: Optional[int]

@@ -18,7 +18,7 @@ def create_secret(db: Session, secret_data: schemas.SecretCreate, ip_address: st
     log = models.SecretLog(
         secret_id=db_secret.id,
         secret_key=db_secret.secret_key,
-        action="created",
+        action="secret_created",
         ip_address=ip_address
     )
     db.add(log)

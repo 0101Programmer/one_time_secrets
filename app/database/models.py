@@ -17,6 +17,7 @@ class Secret(Base):
     secret_key = Column(String, index=True, unique=True, default=lambda: secrets.token_urlsafe(16))
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     is_accessed = Column(Boolean, default=False)
+    is_deleted = Column(Boolean, default=False)
     logs = relationship("SecretLog", back_populates="secret_ref", cascade="all, delete-orphan")
 
 class SecretLog(Base):
