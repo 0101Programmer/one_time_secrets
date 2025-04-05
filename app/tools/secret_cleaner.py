@@ -1,10 +1,11 @@
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import AsyncIterator, Dict
+from typing import AsyncIterator, Dict, List
 
 from fastapi import FastAPI
-from sqlalchemy import func, types
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from .logger_config import setup_logger
 from ..database import models
@@ -14,12 +15,24 @@ from ..database.config import SessionLocal
 logger = setup_logger(__name__)
 
 
-def clean_expired_secrets(batch_size: int = 100) -> Dict:
+def clean_expired_secrets(batch_size: int = 100) -> Dict[str, str | int]:
     """
-    Очистка истёкших секретов
+    Очистка истёкших секретов.
+
+    Параметры:
+        - batch_size (int): Максимальное количество секретов для удаления за один раз.
+
+    Возвращает:
+        - Dict[str, str | int]: Результат очистки.
+          Пример:
+          {
+              "deleted_count": 5,
+              "status": "success",
+              "message": "Deleted 5 expired secrets"
+          }
     """
-    db = SessionLocal()
-    deleted_count = 0
+    db: Session = SessionLocal()
+    deleted_count: int = 0
 
     try:
         now = datetime.now(timezone.utc)
@@ -29,43 +42,41 @@ def clean_expired_secrets(batch_size: int = 100) -> Dict:
         db_now = db.query(func.now()).scalar()
         logger.info(f"Database current time: {db_now}")
 
-        # Загружаем все активные секреты (не удалённые)
-        all_secrets = db.query(models.Secret).filter(
-            models.Secret.is_deleted == False
-        ).all()
-
-        logger.info(f"Loaded {len(all_secrets)} secrets for processing")
-
-        # Фильтруем истёкшие секреты на стороне Python
-        expired_secrets = [
-            secret for secret in all_secrets
-            if secret.created_at + timedelta(seconds=secret.ttl_seconds) < now
-        ]
+        # Ищем истёкшие секреты на стороне базы данных
+        expired_secrets: List[models.Secret] = db.query(models.Secret).filter(
+            models.Secret.is_deleted == False,
+            models.Secret.created_at + func.make_interval(0, 0, 0, 0, 0, 0, models.Secret.ttl_seconds) < now
+        ).limit(batch_size).all()
 
         logger.info(f"Found {len(expired_secrets)} expired secrets")
 
-        for secret in expired_secrets[:batch_size]:  # Обрабатываем только batch_size секретов
-            expires_at = secret.created_at + timedelta(seconds=secret.ttl_seconds)
-            logger.info(
-                f"Deleting secret ID={secret.id}: "
-                f"created={secret.created_at}, "
-                f"ttl={secret.ttl_seconds}s, "
-                f"expired_at={expires_at}"
-            )
+        for secret in expired_secrets:
+            try:
+                expires_at = secret.created_at + timedelta(seconds=secret.ttl_seconds)
+                logger.info(
+                    f"Deleting secret ID={secret.id}: "
+                    f"created={secret.created_at}, "
+                    f"ttl={secret.ttl_seconds}s, "
+                    f"expired_at={expires_at}"
+                )
 
-            secret.is_deleted = True
+                # Помечаем секрет как удалённый
+                secret.is_deleted = True
 
-            log = models.SecretLog(
-                secret_id=secret.id,
-                secret_key=secret.secret_key,
-                action="auto_cleanup_expired",
-                ip_address="system"
-            )
-            db.add(log)
-            deleted_count += 1
+                # Логируем действие
+                log = models.SecretLog(
+                    secret_id=secret.id,
+                    secret_key=secret.secret_key,
+                    action="auto_cleanup_expired",
+                    ip_address="system"
+                )
+                db.add(log)
+                db.commit()  # Коммит для каждого секрета
+                deleted_count += 1
+            except Exception as e:
+                logger.error(f"Error processing secret ID={secret.id}: {str(e)}", exc_info=True)
+                db.rollback()  # Откатываем только текущую транзакцию
 
-        db.commit()
-        logger.info(f"Successfully deleted {deleted_count} secrets")
         return {
             "deleted_count": deleted_count,
             "status": "success",
@@ -118,6 +129,8 @@ def get_lifespan(test_mode: bool = False) -> AsyncIterator[None]:
 async def periodic_cleanup(interval: int):
     """Фоновая задача очистки с заданным интервалом"""
     logger.info(f"Periodic cleanup task started (interval: {interval}s)")
+    retry_count = 0
+    max_retries = 3
 
     while True:
         try:
@@ -131,8 +144,13 @@ async def periodic_cleanup(interval: int):
             logger.info(f"Cleanup completed in {duration:.2f} seconds")
 
             logger.info(f"Waiting {interval} seconds before next cleanup")
+            retry_count = 0  # Сбрасываем счётчик ошибок
             await asyncio.sleep(interval)
 
         except Exception as e:
+            retry_count += 1
             logger.error(f"Periodic cleanup error: {e}", exc_info=True)
+            if retry_count >= max_retries:
+                logger.error("Maximum retries reached. Stopping periodic cleanup task.")
+                break
             await asyncio.sleep(min(60, interval))  # Ждём перед повторной попыткой
