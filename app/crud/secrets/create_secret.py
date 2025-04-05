@@ -1,6 +1,9 @@
 from sqlalchemy.orm import Session
-from typing import Optional
 from ...database import schemas, models
+from ...cache.redis_config import get_redis_client
+from ...tools.logger_config import setup_logger
+
+logger = setup_logger(__name__)
 
 
 def create_secret(
@@ -38,7 +41,19 @@ def create_secret(
     db.commit()
     db.refresh(db_secret)  # Обновляем объект db_secret, чтобы получить все поля из БД
 
-    # === Шаг 4: Логирование создания секрета ===
+    # === Шаг 4: Сохранение секрета в Redis ===
+    try:
+        redis_client = get_redis_client()  # Получаем клиент Redis
+        redis_client.set(
+            db_secret.secret_key,  # Ключ для Redis (уникальный ключ секрета)
+            db_secret.encrypted_secret,  # Зашифрованный секрет
+            ex=300  # TTL = 5 минут (300 секунд)
+        )
+    except Exception as e:
+        # Если Redis недоступен, логируем ошибку, но продолжаем работу
+        logger.error(f"Redis error: {e}")
+
+    # === Шаг 5: Логирование создания секрета ===
     # Создаём запись в логе о создании секрета.
     log = models.SecretLog(
         secret_id=db_secret.id,  # ID созданного секрета
@@ -49,6 +64,6 @@ def create_secret(
     db.add(log)
     db.commit()
 
-    # === Шаг 5: Возвращение ответа ===
+    # === Шаг 6: Возвращение ответа ===
     # Возвращаем объект SecretResponse с уникальным ключом доступа к секрету.
     return schemas.SecretResponse(secret_key=db_secret.secret_key)

@@ -1,17 +1,20 @@
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
-from fastapi import status as http_status
 from sqlalchemy.orm import Session
 from typing import Optional
+
+from ...cache.redis_config import get_redis_client
 from ...database import models
 from ...tools.encryption import decrypt_data
+from ...tools.logger_config import setup_logger
 
+logger = setup_logger(__name__)
 
 def get_secret(
         db: Session,
         secret_key: str,
-        passphrase: Optional[str],  # passphrase может быть None
-        ip_address: str
+        passphrase: Optional[str] = None,
+        ip_address: str = "unknown"
 ) -> str:
     """
     Получение секрета по ключу с автоматическим удалением истёкших.
@@ -32,32 +35,31 @@ def get_secret(
             - 410 Gone: Если секрет уже был получен или истек срок его действия.
             - 500 Internal Server Error: При ошибке дешифрования.
     """
+    try:
+        redis_client = get_redis_client()  # Получаем клиент Redis
+        encrypted_secret = redis_client.get(secret_key)  # Проверяем наличие секрета в Redis
+        if encrypted_secret:
+            redis_client.delete(secret_key)  # Удаляем секрет из Redis после чтения
+            return decrypt_data(encrypted_secret)  # Дешифруем секрет и возвращаем его
+    except Exception as e:
+        # Если Redis недоступен, игнорируем ошибку и продолжаем работу
+        logger.error(f"Redis error: {e}")
+
     # === Шаг 1: Поиск секрета в БД ===
-    # Ищем секрет по secret_key и проверяем, что он не помечен как удалённый.
     secret = db.query(models.Secret).filter(
         models.Secret.secret_key == secret_key,
         models.Secret.is_deleted == False
     ).first()
 
     if not secret:
-        # Если секрет не найден, выбрасываем ошибку 404.
         raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
+            status_code=404,
             detail="Secret not found"
         )
 
     # === Шаг 2: Проверка пароля ===
     if secret.encrypted_passphrase:
-        # Если зашифрованный пароль существует, дешифруем его
-        try:
-            decrypted_passphrase = decrypt_data(secret.encrypted_passphrase)
-        except Exception as e:
-            raise HTTPException(
-                status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error decrypting passphrase"
-            )
-
-        # Сравниваем дешифрованный пароль с переданным клиентом
+        decrypted_passphrase = decrypt_data(secret.encrypted_passphrase)
         if decrypted_passphrase != passphrase:
             _log_access_attempt(
                 db,
@@ -67,11 +69,10 @@ def get_secret(
                 ip_address
             )
             raise HTTPException(
-                status_code=http_status.HTTP_403_FORBIDDEN,
+                status_code=403,
                 detail="Invalid passphrase"
             )
     elif passphrase is not None:
-        # Если пароль не был установлен, но клиент передал passphrase
         _log_access_attempt(
             db,
             secret.id,
@@ -80,7 +81,7 @@ def get_secret(
             ip_address
         )
         raise HTTPException(
-            status_code=http_status.HTTP_403_FORBIDDEN,
+            status_code=403,
             detail="Passphrase was not set for this secret"
         )
 
@@ -91,10 +92,7 @@ def get_secret(
     expires_at = created_at + timedelta(seconds=secret.ttl_seconds)
 
     if now > expires_at:
-        # Если срок действия истёк, помечаем секрет как удалённый.
         secret.is_deleted = True
-
-        # Логируем автоматическое удаление истекшего секрета.
         _log_access_attempt(
             db,
             secret.id,
@@ -103,16 +101,13 @@ def get_secret(
             ip_address
         )
         db.commit()
-
-        # Выбрасываем ошибку 410, если секрет истёк.
         raise HTTPException(
-            status_code=http_status.HTTP_410_GONE,
+            status_code=410,
             detail="Secret expired and has been automatically deleted"
         )
 
     # === Шаг 4: Проверка, был ли уже доступ ===
     if secret.is_accessed:
-        # Логируем попытку повторного доступа.
         _log_access_attempt(
             db,
             secret.id,
@@ -120,9 +115,8 @@ def get_secret(
             "access_attempt_already_used",
             ip_address
         )
-        # Выбрасываем ошибку 410, если секрет уже был получен.
         raise HTTPException(
-            status_code=http_status.HTTP_410_GONE,
+            status_code=410,
             detail="Secret already accessed"
         )
 
@@ -130,16 +124,13 @@ def get_secret(
     try:
         decrypted_secret = decrypt_data(secret.encrypted_secret)
     except Exception as e:
-        # Если возникла ошибка при дешифровании секрета, выбрасываем 500.
         raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail="Error decrypting secret"
         )
 
     # === Шаг 6: Пометка секрета как прочитанного ===
     secret.is_accessed = True
-
-    # Логируем успешное получение секрета.
     _log_access_attempt(
         db,
         secret.id,
@@ -149,7 +140,6 @@ def get_secret(
     )
     db.commit()
 
-    # Возвращаем дешифрованное содержимое секрета.
     return decrypted_secret
 
 

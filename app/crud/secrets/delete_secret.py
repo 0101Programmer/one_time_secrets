@@ -1,8 +1,12 @@
-from datetime import datetime, timezone
-from sqlalchemy.orm import Session
 from typing import Optional, Tuple
-from ...database import models
 
+from sqlalchemy.orm import Session
+
+from ...cache.redis_config import get_redis_client
+from ...database import models
+from ...tools.logger_config import setup_logger
+
+logger = setup_logger(__name__)
 
 def delete_secret(
         db: Session,  # Сессия базы данных SQLAlchemy
@@ -38,11 +42,19 @@ def delete_secret(
     if secret.is_deleted:
         return False, secret.id
 
-    # === Шаг 3: Мягкое удаление ===
+    # === Шаг 3: Удаление секрета из Redis ===
+    try:
+        redis_client = get_redis_client()  # Получаем клиент Redis
+        redis_client.delete(secret_key)  # Удаляем секрет из Redis
+    except Exception as e:
+        # Если Redis недоступен, логируем ошибку, но продолжаем работу
+        logger.error(f"Redis error during secret deletion: {e}")
+
+    # === Шаг 4: Мягкое удаление ===
     # Помечаем секрет как удалённый (is_deleted = True).
     secret.is_deleted = True
 
-    # === Шаг 4: Логирование успешного удаления ===
+    # === Шаг 5: Логирование успешного удаления ===
     # Создаём запись в логе об успешном удалении.
     log = models.SecretLog(
         secret_id=secret.id,
@@ -53,6 +65,6 @@ def delete_secret(
     db.add(log)
     db.commit()
 
-    # === Шаг 5: Возвращаем результат ===
+    # === Шаг 6: Возвращаем результат ===
     # Возвращаем (True, secret_id) для подтверждения успешного удаления.
     return True, secret.id
