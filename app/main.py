@@ -1,10 +1,10 @@
 from fastapi import FastAPI
 
 from app.routes import secrets
-from app.tools.secret_cleaner import register_cleanup_task
+from app.tools.secret_cleaner import get_lifespan
 
-app = FastAPI()
+app = FastAPI(lifespan=get_lifespan(test_mode=False))
 
-# Регистрируем очистку
-register_cleanup_task(app)
+# Подключаем роуты
 app.include_router(secrets.router, prefix="/secrets", tags=["secrets"])
+
