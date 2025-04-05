@@ -12,13 +12,13 @@ def get_secret(
         ip_address: str
 ) -> str:
     """
-    Получение секрета по ключу
+    Получение секрета по ключу с автоматическим удалением истёкших
     Возвращает:
         - str: содержимое секрета при успехе
     Вызывает:
         - HTTPException: при различных ошибках доступа
     """
-    # Находим секрет в БД
+    # Находим секрет в БД (включая проверку на удаление)
     secret = db.query(models.Secret).filter(
         models.Secret.secret_key == secret_key,
         models.Secret.is_deleted == False
@@ -51,16 +51,21 @@ def get_secret(
     expires_at = created_at + timedelta(seconds=secret.ttl_seconds)
 
     if now > expires_at:
+        # Автоматически помечаем как удалённый
+        secret.is_deleted = True
+
         _log_access_attempt(
             db,
             secret.id,
             secret_key,
-            "access_attempt_expired",
+            "auto_delete_expired_on_access",
             ip_address
         )
+        db.commit()
+
         raise HTTPException(
             status_code=http_status.HTTP_410_GONE,
-            detail="Secret expired"
+            detail="Secret expired and has been automatically deleted"
         )
 
     # Проверяем, был ли уже доступ
@@ -89,7 +94,6 @@ def get_secret(
     db.commit()
 
     return secret.secret
-
 
 def _log_access_attempt(
         db: Session,
