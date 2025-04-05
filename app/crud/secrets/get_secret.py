@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from fastapi import status as http_status
 from sqlalchemy.orm import Session
 from ...database import models
+from ...tools.encryption import decrypt_data
 
 
 def get_secret(
@@ -30,8 +31,17 @@ def get_secret(
             detail="Secret not found"
         )
 
+    # Дешифруем пароль для проверки
+    try:
+        decrypted_passphrase = decrypt_data(secret.encrypted_passphrase)
+    except Exception as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error decrypting passphrase"
+        )
+
     # Проверяем пароль
-    if secret.passphrase != passphrase:
+    if decrypted_passphrase != passphrase:
         _log_access_attempt(
             db,
             secret.id,
@@ -82,6 +92,15 @@ def get_secret(
             detail="Secret already accessed"
         )
 
+    # Дешифруем секрет
+    try:
+        decrypted_secret = decrypt_data(secret.encrypted_secret)
+    except Exception as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error decrypting secret"
+        )
+
     # Помечаем как прочитанный
     secret.is_accessed = True
     _log_access_attempt(
@@ -93,7 +112,8 @@ def get_secret(
     )
     db.commit()
 
-    return secret.secret
+    return decrypted_secret
+
 
 def _log_access_attempt(
         db: Session,
