@@ -1,4 +1,5 @@
 import datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
@@ -24,15 +25,15 @@ async def create_new_secret(
 @router.get("/{secret_key}", response_model=schemas.SecretReadResponse)
 async def api_get_secret(
     secret_key: str,
-    passphrase: str,
     request: Request,
+    passphrase: Optional[str] = None,  # Сделаем passphrase опциональным
     db: Session = Depends(get_db)
 ):
     try:
         secret_content = get_secret(
             db=db,
             secret_key=secret_key,
-            passphrase=passphrase,
+            passphrase=passphrase,  # Передаём passphrase (может быть None)
             ip_address=request.client.host
         )
         return {"secret": secret_content}

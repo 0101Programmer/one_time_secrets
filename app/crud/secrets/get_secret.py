@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from fastapi import status as http_status
 from sqlalchemy.orm import Session
+from typing import Optional
 from ...database import models
 from ...tools.encryption import decrypt_data
 
@@ -9,7 +10,7 @@ from ...tools.encryption import decrypt_data
 def get_secret(
         db: Session,
         secret_key: str,
-        passphrase: str,
+        passphrase: Optional[str],  # passphrase может быть None
         ip_address: str
 ) -> str:
     """
@@ -18,7 +19,7 @@ def get_secret(
     Параметры:
         - db (Session): Сессия базы данных SQLAlchemy.
         - secret_key (str): Уникальный ключ секрета.
-        - passphrase (str): Пароль для доступа к секрету.
+        - passphrase (Optional[str]): Опциональный пароль для доступа к секрету.
         - ip_address (str): IP-адрес клиента, запрашивающего секрет.
 
     Возвращает:
@@ -45,21 +46,32 @@ def get_secret(
             detail="Secret not found"
         )
 
-    # === Шаг 2: Дешифрование пароля ===
-    # Дешифруем зашифрованный пароль из базы данных для проверки.
-    try:
-        decrypted_passphrase = decrypt_data(secret.encrypted_passphrase)
-    except Exception as e:
-        # Если возникла ошибка при дешифровании пароля, выбрасываем 500.
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error decrypting passphrase"
-        )
+    # === Шаг 2: Проверка пароля ===
+    if secret.encrypted_passphrase:
+        # Если зашифрованный пароль существует, дешифруем его
+        try:
+            decrypted_passphrase = decrypt_data(secret.encrypted_passphrase)
+        except Exception as e:
+            raise HTTPException(
+                status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error decrypting passphrase"
+            )
 
-    # === Шаг 3: Проверка пароля ===
-    # Сравниваем дешифрованный пароль с переданным клиентом.
-    if decrypted_passphrase != passphrase:
-        # Логируем попытку доступа с неверным паролем.
+        # Сравниваем дешифрованный пароль с переданным клиентом
+        if decrypted_passphrase != passphrase:
+            _log_access_attempt(
+                db,
+                secret.id,
+                secret_key,
+                "access_attempt_failed",
+                ip_address
+            )
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="Invalid passphrase"
+            )
+    elif passphrase is not None:
+        # Если пароль не был установлен, но клиент передал passphrase
         _log_access_attempt(
             db,
             secret.id,
@@ -67,14 +79,12 @@ def get_secret(
             "access_attempt_failed",
             ip_address
         )
-        # Выбрасываем ошибку 403, если пароль неверен.
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="Invalid passphrase"
+            detail="Passphrase was not set for this secret"
         )
 
-    # === Шаг 4: Проверка срока действия секрета ===
-    # Вычисляем время истечения срока действия секрета.
+    # === Шаг 3: Проверка срока действия секрета ===
     now = datetime.now(timezone.utc)
     created_at = secret.created_at.replace(
         tzinfo=timezone.utc) if secret.created_at.tzinfo is None else secret.created_at
@@ -100,8 +110,7 @@ def get_secret(
             detail="Secret expired and has been automatically deleted"
         )
 
-    # === Шаг 5: Проверка, был ли уже доступ ===
-    # Проверяем, был ли секрет уже получен ранее.
+    # === Шаг 4: Проверка, был ли уже доступ ===
     if secret.is_accessed:
         # Логируем попытку повторного доступа.
         _log_access_attempt(
@@ -117,8 +126,7 @@ def get_secret(
             detail="Secret already accessed"
         )
 
-    # === Шаг 6: Дешифрование секрета ===
-    # Дешифруем содержимое секрета.
+    # === Шаг 5: Дешифрование секрета ===
     try:
         decrypted_secret = decrypt_data(secret.encrypted_secret)
     except Exception as e:
@@ -128,8 +136,7 @@ def get_secret(
             detail="Error decrypting secret"
         )
 
-    # === Шаг 7: Пометка секрета как прочитанного ===
-    # Помечаем секрет как прочитанный, чтобы предотвратить повторный доступ.
+    # === Шаг 6: Пометка секрета как прочитанного ===
     secret.is_accessed = True
 
     # Логируем успешное получение секрета.
