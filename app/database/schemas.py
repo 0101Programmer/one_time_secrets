@@ -16,6 +16,8 @@ class SecretCreate(SecretBase):
 class SecretResponse(BaseModel):
     secret_key: str
 
+class SecretReadResponse(BaseModel):
+    secret: str
 
 class SecretLogResponse(BaseModel):
     id: int
