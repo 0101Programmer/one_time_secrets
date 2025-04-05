@@ -21,14 +21,3 @@ class SecretReadResponse(BaseModel):
 
 class SecretDeleteResponse(BaseModel):
     status: str
-
-class SecretLogResponse(BaseModel):
-    id: int
-    secret_id: Optional[int]
-    secret_key: str
-    action: str
-    ip_address: str
-    created_at: datetime
-
-    class Config:
-        from_attributes = True

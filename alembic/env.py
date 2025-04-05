@@ -6,6 +6,8 @@ import os
 import sys
 from dotenv import load_dotenv
 
+from app.config import Config
+
 load_dotenv()  # Загружаем .env
 
 
@@ -19,7 +21,7 @@ config = context.config
 fileConfig(config.config_file_name)
 
 # Переопределяем URL из переменных окружения
-config.set_main_option("sqlalchemy.url", os.getenv("POSTGRES_URL"))
+config.set_main_option("sqlalchemy.url", Config.DATABASE_URL)
 
 target_metadata = Base.metadata
 

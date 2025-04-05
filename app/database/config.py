@@ -4,9 +4,11 @@ from sqlalchemy.orm import sessionmaker
 import os
 from dotenv import load_dotenv
 
+from ..config import Config
+
 load_dotenv()
 
-POSTGRES_URL = os.getenv("POSTGRES_URL")
+POSTGRES_URL = Config.DATABASE_URL
 
 # Создаем движок с настройками для Alembic
 engine = create_engine(
